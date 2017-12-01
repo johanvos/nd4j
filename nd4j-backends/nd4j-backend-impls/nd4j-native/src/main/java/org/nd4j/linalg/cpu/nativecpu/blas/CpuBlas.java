@@ -4,7 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.bytedeco.javacpp.mkl_rt;
 import org.nd4j.nativeblas.Nd4jBlas;
 
-import static org.bytedeco.javacpp.openblas.*;
+// import static org.bytedeco.javacpp.openblas.*;
 
 /**
  * Implementation of Nd4jBlas with OpenBLAS/MKL
@@ -13,6 +13,17 @@ import static org.bytedeco.javacpp.openblas.*;
  */
 @Slf4j
 public class CpuBlas extends Nd4jBlas {
+
+public static final int CblasRowMajor= 101, CblasColMajor= 102;
+/** enum CBLAS_TRANSPOSE */
+public static final int CblasNoTrans= 111, CblasTrans= 112, CblasConjTrans= 113, CblasConjNoTrans= 114;
+/** enum CBLAS_UPLO */
+public static final int CblasUpper= 121, CblasLower= 122;
+/** enum CBLAS_DIAG */
+public static final int CblasNonUnit= 131, CblasUnit= 132;
+/** enum CBLAS_SIDE */
+public static final int CblasLeft= 141, CblasRight= 142;
+
 
     /**
      * Converts a character
@@ -117,6 +128,7 @@ public class CpuBlas extends Nd4jBlas {
 
     @Override
     public void setMaxThreads(int num) {
+/*
         try {
             // this is required to work around some loading issue with MKL under Linux
             mkl_rt.MKL_Set_Num_Threads(num);
@@ -128,15 +140,18 @@ public class CpuBlas extends Nd4jBlas {
             log.trace("Could not load MKL", e);
         }
         blas_set_num_threads(num);
+*/
     }
 
     @Override
     public int getMaxThreads() {
-        return blas_get_num_threads();
+        // return blas_get_num_threads();
+return 2;
     }
 
     @Override
     public int getBlasVendorId() {
-        return blas_get_vendor();
+        // return blas_get_vendor();
+return -1;
     }
 }
