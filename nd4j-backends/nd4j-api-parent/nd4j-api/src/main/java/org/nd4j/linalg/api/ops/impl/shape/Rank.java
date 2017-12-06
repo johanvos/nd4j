@@ -20,12 +20,15 @@
 package org.nd4j.linalg.api.ops.impl.shape;
 
 import lombok.extern.slf4j.Slf4j;
+import lombok.val;
 import onnx.OnnxProto3;
 import org.nd4j.autodiff.functions.DifferentialFunction;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.imports.NoOpNameFoundException;
+import org.nd4j.imports.graphmapper.tf.TFGraphMapper;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.ops.ShapeOp;
+import org.nd4j.linalg.api.ops.DynamicCustomOp;
+import org.nd4j.linalg.factory.Nd4j;
 import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
 import org.tensorflow.framework.NodeDef;
@@ -41,55 +44,42 @@ import java.util.Map;
  * @author Adam Gibson
  */
 @Slf4j
-public class Rank extends ShapeOp {
+public class Rank extends DynamicCustomOp {
 
 
-    public Rank(SameDiff sameDiff, DifferentialFunction i_v) {
-        super(sameDiff, i_v, false);
-    }
 
-    public Rank(SameDiff sameDiff, DifferentialFunction i_v,Object[] extraArgs, int[] shape1) {
-        super(sameDiff, i_v, null, false, extraArgs);
-    }
 
     public Rank() {}
-
-    public Rank(INDArray x, INDArray z) {
-        super(x, z);
-    }
-
-    public Rank(INDArray x, INDArray z, long n) {
-        super(x, z, n);
-    }
-
-    public Rank(INDArray x, INDArray y, INDArray z, long n) {
-        super(x, y, z, n);
-    }
-
-    public Rank(INDArray x) {
-        super(x);
-    }
-
-    @Override
-    public void exec(int... dimensions) {
-        exec();
-    }
-
 
 
     @Override
     public void initFromTensorFlow(NodeDef nodeDef, SameDiff initWith, Map<String, AttrValue> attributesForNode, GraphDef graph) {
+        val name = TFGraphMapper.getInstance().getNodeName(nodeDef.getName());
+        val input = initWith.getVariable(name);
+        if(!initWith.isPlaceHolder(input.resultVertexId()) && initWith.shapeAlreadyExistsForVertexId(resultVertexId())) {
+            val inputShape = initWith.getShapeForVertexId(input.resultVertexId());
+            val resultLength = Nd4j.scalar(inputShape.length);
+            val thisResultId = resultVertexId();
+            initWith.putArrayForVertexId(thisResultId,resultLength);
+        }
+    }
 
+    @Override
+    public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
+        super.initWithArrays(arrayMap);
+        val arr = sameDiff.getArrForVertexId(resultVertexId());
+        if(arr == null) {
+            val inputShape = sameDiff.getShapeForVertexId(arg().resultVertexId());
+            val resultLength = Nd4j.scalar(inputShape.length);
+            val thisResultId = resultVertexId();
+            sameDiff.putArrayForVertexId(thisResultId,resultLength);
+
+        }
     }
 
     @Override
     public void initFromOnnx(OnnxProto3.NodeProto node, SameDiff initWith, Map<String, OnnxProto3.AttributeProto> attributesForNode, OnnxProto3.GraphProto graph) {
 
-    }
-
-    @Override
-    public int opNum() {
-        return 0;
     }
 
     @Override

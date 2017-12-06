@@ -172,13 +172,17 @@ public abstract class BaseTransformOp extends BaseOp implements TransformOp {
 
 
     @Override
-    public void initWithArrays(Map<String, INDArray> arrayMap) {
+    public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
         super.initWithArrays(arrayMap);
-        val shape = calculateOutputShape();
-        if(shape.isEmpty() || shape.get(0) == null)  {
-            throw new ND4JIllegalStateException("Shape should not be null or empty");
+        if(!sameDiff.shapeAlreadyExistsForVertexId(vertexId) && sameDiff.getArrForVertexId(vertexId) == null) {
+            val shape = calculateOutputShape();
+            if (shape.isEmpty() || shape.get(0) == null) {
+                throw new ND4JIllegalStateException("Shape should not be null or empty");
+            }
+
+            sameDiff.putShapeForVertexId(vertexId, shape.get(0));
+
         }
-        sameDiff.updateShapeForVertexId(vertexId,shape.get(0));
     }
 
 
@@ -189,21 +193,13 @@ public abstract class BaseTransformOp extends BaseOp implements TransformOp {
         return ret;
     }
 
-    @Override
-    protected void addAsNewVertexId() {
-        super.addAsNewVertexId();
-    }
 
     @Override
     public void initFromTensorFlow(NodeDef nodeDef, SameDiff initWith, Map<String, AttrValue> attributesForNode, GraphDef graph) {
-        if(!sameDiff.shapeAlreadyExistsForVertexId(vertexId))
-            sameDiff.putShapeForVertexId(vertexId,calculateOutputShape().get(0));
     }
 
     @Override
     public void initFromOnnx(OnnxProto3.NodeProto node, SameDiff initWith, Map<String, OnnxProto3.AttributeProto> attributesForNode, OnnxProto3.GraphProto graph) {
-        if(!sameDiff.shapeAlreadyExistsForVertexId(vertexId))
-            sameDiff.putShapeForVertexId(vertexId,calculateOutputShape().get(0));
 
     }
 

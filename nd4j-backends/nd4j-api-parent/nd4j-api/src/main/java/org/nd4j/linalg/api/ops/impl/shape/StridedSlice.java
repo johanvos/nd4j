@@ -19,13 +19,13 @@
 
 package org.nd4j.linalg.api.ops.impl.shape;
 
-import com.google.common.primitives.Ints;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.nd4j.autodiff.functions.DifferentialFunction;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.imports.NoOpNameFoundException;
 import org.nd4j.imports.graphmapper.tf.TFGraphMapper;
+import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.DynamicCustomOp;
 import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
@@ -95,7 +95,6 @@ public class StridedSlice extends DynamicCustomOp {
         }
 
 
-        val iArgs = getIArguments();
         // bit masks for this slice
         val bm = nodeDef.getAttrOrThrow("begin_mask");
         val xm = nodeDef.getAttrOrThrow("ellipsis_mask");
@@ -103,38 +102,41 @@ public class StridedSlice extends DynamicCustomOp {
         val nm = nodeDef.getAttrOrThrow("new_axis_mask");
         val sm = nodeDef.getAttrOrThrow("shrink_axis_mask");
 
-        iArgs.add((int) bm.getI());
-        iArgs.add((int) xm.getI());
-        iArgs.add((int) em.getI());
+        addIArgument((int) bm.getI());
+        addIArgument((int) xm.getI());
+        addIArgument((int) em.getI());
 
-        iArgs.add((int) nm.getI());
-        iArgs.add((int) sm.getI());
+        addIArgument((int) nm.getI());
+        addIArgument((int) sm.getI());
 
         val beginArr = TFGraphMapper.getInstance().getNDArrayFromTensor("value",beginNode,graph);
         val endArr = TFGraphMapper.getInstance().getNDArrayFromTensor("value",endNode,graph);
         val stridesArr = TFGraphMapper.getInstance().getNDArrayFromTensor("value",strides,graph);
 
-
         if (beginArr != null && endArr != null && stridesArr != null) {
 
             for (int e = 0; e < beginArr.length(); e++)
-                iArgs.add((int) beginArr.getInt(e));
+                addIArgument(beginArr.getInt(e));
 
             for (int e = 0; e <  endArr.length(); e++)
-                iArgs.add((int) endArr.getInt(e));
+                addIArgument(endArr.getInt(e));
 
             for (int e = 0; e < stridesArr.length(); e++)
-                iArgs.add((int)  stridesArr.getInt(e));
+                addIArgument(stridesArr.getInt(e));
         } else {
             // do nothing
         }
 
-        val bits = Ints.toArray(iArgs);
+        addArrayInputArguments();
+
 
     }
 
 
-
+    @Override
+    public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
+        addArrayInputArguments();
+    }
 
     @Override
     public List<DifferentialFunction> doDiff(List<DifferentialFunction> i_v) {

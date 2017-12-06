@@ -5,24 +5,32 @@ import lombok.val;
 import onnx.OnnxProto3;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.linalg.api.ops.DynamicCustomOp;
-import org.nd4j.linalg.api.ops.Op;
 import org.nd4j.linalg.exception.ND4JIllegalStateException;
 import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
 import org.tensorflow.framework.NodeDef;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
-public class Concat extends DynamicCustomOp {
+public class MergeMax extends DynamicCustomOp {
     private int concatDimension;
 
     @Override
     public String opName() {
-        return "concat";
+        return "mergemax";
     }
 
 
+
+    @Override
+    public List<int[]> calculateOutputShape() {
+        List<int[]> ret = new ArrayList<>(1);
+        ret.add(arg().getResultShape());
+        return ret;
+    }
 
 
     @Override
@@ -58,11 +66,9 @@ public class Concat extends DynamicCustomOp {
             concatDimension = 1;
 
         this.concatDimension = concatDimension;
-        addIArgument(this.concatDimension);
         log.debug("Concat dimension: {}", concatDimension);
 
     }
-
 
     @Override
     public void initFromOnnx(OnnxProto3.NodeProto node, SameDiff initWith, Map<String, OnnxProto3.AttributeProto> attributesForNode, OnnxProto3.GraphProto graph) {
@@ -71,18 +77,13 @@ public class Concat extends DynamicCustomOp {
 
     @Override
     public String onnxName() {
-        return "Concat";
+        return "MergeMax";
     }
 
     @Override
     public String tensorflowName() {
-        return "Concat";
+        return "AddN";
     }
 
 
-
-    @Override
-    public Op.Type opType() {
-        return Op.Type.SHAPE;
-    }
 }

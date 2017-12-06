@@ -15,6 +15,7 @@ import org.nd4j.linalg.exception.ND4JIllegalStateException;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.primitives.Pair;
 import org.nd4j.linalg.util.ArrayUtil;
+import org.nd4j.weightinit.impl.ZeroInitScheme;
 import org.tensorflow.framework.*;
 
 import java.io.*;
@@ -30,7 +31,7 @@ import java.util.*;
  */
 @Slf4j
 public class TFGraphMapper extends BaseGraphMapper<GraphDef,NodeDef,AttrValue,NodeDef> {
-    private Set<String> seenNodes = new HashSet<>();
+    private Set<String> seenNodes = new LinkedHashSet<>();
     public final static String VALUE_ATTR_KEY = "value";
     public final static String SHAPE_KEY = "shape";
     private static TFGraphMapper MAPPER_INSTANCE = new TFGraphMapper();
@@ -186,7 +187,14 @@ public class TFGraphMapper extends BaseGraphMapper<GraphDef,NodeDef,AttrValue,No
     }
 
 
-    private String getNodeName(String name) {
+    /**
+     * Map a tensorflow node name
+     * to the samediff equivalent
+     * for import
+     * @param name the name to change
+     * @return the input tensorflow name
+     */
+    public String getNodeName(String name) {
         //tensorflow adds colons to the end of variables representing input index, this strips those off
         String ret = name;
         if(ret.startsWith("^"))
@@ -350,7 +358,7 @@ public class TFGraphMapper extends BaseGraphMapper<GraphDef,NodeDef,AttrValue,No
                      * the output/result variable
                      * with its inputs and notifying
                      * the variable that it has a place holder argument
-                     * it should resoolve before trying to execute
+                     * it should resolve before trying to execute
                      * anything.
                      */
                     if(diff.isPlaceHolder(func.getVertexId())) {
@@ -366,13 +374,19 @@ public class TFGraphMapper extends BaseGraphMapper<GraphDef,NodeDef,AttrValue,No
                 diff.graph().addEdge(opStateEdge);
                 diff.putFunction(indices.getRight(),newInstance);
                 newInstance.setVertexId(indices.getRight());
+                //make sure variables are properly mapped
+                if(diff.getVariable(TFGraphMapper.getInstance().getNodeName(tfNode.getName())) == null)
+                    diff.var(TFGraphMapper.getInstance().getNodeName(tfNode.getName()),null,new ZeroInitScheme('f'),indices.getRight());
                 diff.associateFunctionsAsArgs(args,newInstance);
                 newInstance.setSameDiff(importState.getSameDiff());
 
                 newInstance.initFromTensorFlow(tfNode,diff,getAttrMap(tfNode),importState.getGraph());
-                if(!diff.shapeAlreadyExistsForVertexId(indices.getRight()) && newInstance.getResultShape() != null)
+                if(tfNode.getInputCount() != newInstance.args().length) {
+                    throw new ND4JIllegalStateException("Illegal number of arguments imported " + tfNode.getInputCount() + " with function args being resolved to " + newInstance.args().length);
+                }
+             /*   if(!diff.shapeAlreadyExistsForVertexId(indices.getRight()) && newInstance.getResultShape() != null)
                     diff.putShapeForVertexId(indices.getRight(),newInstance.getResultShape());
-
+*/
 
             } catch (Exception e) {
                 log.error("Failed with [{}]", opName);

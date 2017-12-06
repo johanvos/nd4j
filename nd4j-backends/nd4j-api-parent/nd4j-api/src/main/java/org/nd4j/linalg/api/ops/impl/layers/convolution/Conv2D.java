@@ -11,6 +11,7 @@ import org.nd4j.imports.graphmapper.tf.TFGraphMapper;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.DynamicCustomOp;
 import org.nd4j.linalg.api.ops.impl.layers.convolution.config.Conv2DConfig;
+import org.nd4j.linalg.exception.ND4JIllegalStateException;
 import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
 import org.tensorflow.framework.NodeDef;
@@ -46,36 +47,45 @@ public class Conv2D extends DynamicCustomOp {
     public Conv2D() {}
 
     protected void addArgs() {
-        getIArguments().add(conv2DConfig.getKh());
-        getIArguments().add(conv2DConfig.getKw());
-        getIArguments().add(conv2DConfig.getSy());
-        getIArguments().add(conv2DConfig.getSx());
-        getIArguments().add(conv2DConfig.getPh());
-        getIArguments().add(conv2DConfig.getPw());
-        getIArguments().add(conv2DConfig.getDh());
-        getIArguments().add(conv2DConfig.getDw());
-        getIArguments().add(fromBoolean(conv2DConfig.isSameMode()));
+       addIArgument(new int[]{conv2DConfig.getKh(),
+      conv2DConfig.getKw(),
+      conv2DConfig.getSy(),
+      conv2DConfig.getSx(),
+      conv2DConfig.getPh(),
+      conv2DConfig.getPw(),
+      conv2DConfig.getDh(),
+      conv2DConfig.getDw(),
+      fromBoolean(conv2DConfig.isSameMode())});
 
     }
 
     @Override
     public int[] getResultShape() {
-        return this.calculateOutputShape().get(0);
+        val shapes = this.calculateOutputShape();
+        if(shapes.isEmpty()) {
+            throw new ND4JIllegalStateException("Unable to compute shape for conv2d! Perhaps missing inputs?");
+        }
+        return shapes.get(0);
     }
 
     @Override
-    public void initWithArrays(Map<String, INDArray> arrayMap) {
-        val var = sameDiff.getVariableForVertexId(vertexId);
+    public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
+        val var = sameDiff.getVariableForVertexId(args()[1].resultVertexId());
         //place holder variable
         if (var.getArr() == null) {
             //assuming the array hasn't been initialized, setup the config
             //resolving the place holder variable.
             INDArray array = arrayMap.get(var.getVarName());
+            if(array == null) {
+                throw new ND4JIllegalStateException("Array for variable " + var.getVarName() + " was null!");
+            }
             array = (array.permute(3, 2, 0, 1).dup('c'));
             sameDiff.updateVariable(var.getVarName(), array);
             conv2DConfig.setKh(array.size(0));
             conv2DConfig.setKw(array.size(1));
         }
+
+
     }
 
     @Override
@@ -112,6 +122,7 @@ public class Conv2D extends DynamicCustomOp {
                 .isSameMode(isSameMode)
                 .build();
         this.conv2DConfig = conv2DConfig;
+
         addArgs();
 
     }
@@ -152,7 +163,7 @@ public class Conv2D extends DynamicCustomOp {
                 .build();
         this.conv2DConfig = conv2DConfig;
         addArgs();
-
+        addArrayInputArguments();
 
     }
 
@@ -169,10 +180,10 @@ public class Conv2D extends DynamicCustomOp {
         inputs.add(f1.get(0));
         Conv2DDerivative conv2DDerivative = Conv2DDerivative.derivativeBuilder()
                 .conv2DConfig(conv2DConfig)
-                .outputs(getOutputArguments().toArray(new INDArray[getOutputArguments().size()]))
+                .outputs(outputArguments())
                 .inputFunctions(inputs.toArray(new DifferentialFunction[inputs.size()]))
                 .build();
-        ret.addAll(Arrays.asList(conv2DDerivative.getOutputFunctions()));
+        ret.addAll(Arrays.asList(conv2DDerivative.outputFunctions()));
         return ret;
     }
 

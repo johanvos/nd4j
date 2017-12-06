@@ -17,8 +17,12 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 
+import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 
@@ -29,9 +33,10 @@ import static org.junit.Assert.assertEquals;
 @RunWith(Parameterized.class)
 public class TFGraphTestAllHelper {
 
-    public static enum ExecuteWith {
+    public  enum ExecuteWith {
         SAMEDIFF,
-        LIBND4J
+        LIBND4J,
+        JUST_PRINT
     }
 
     //TODO: Later, we can add this as a param so we can test different graphs in samediff and not samediff
@@ -89,13 +94,24 @@ public class TFGraphTestAllHelper {
         log.info("\n\tRUNNING TEST " + modelName + "...");
         val graph = TFGraphMapper.getInstance().importGraph(new ClassPathResource(baseDir + "/" + modelName + "/frozen_model.pb").getInputStream());
         INDArray nd4jPred = null;
+        Nd4j.getExecutioner().enableDebugMode(true);
+        Nd4j.getExecutioner().enableVerboseMode(true);
+
         if (execType.equals(ExecuteWith.SAMEDIFF)) {
-            nd4jPred = graph.execWithPlaceHolderAndEndResult(inputs); //This is expected to be just one result
+            graph.execWithPlaceHolder(inputs); //This is expected to be just one result
+            nd4jPred = graph.getVariable("output").getArr();
         } else if (execType.equals(ExecuteWith.LIBND4J)) {
             val executioner = new NativeGraphExecutioner();
             val results = executioner.executeGraph(graph, configuration);
             assertEquals(1, results.length); //FIXME: Later
-            nd4jPred = results[0];
+            nd4jPred = graph.getVariable("output").getArr();
+            //graph.asFlatFile(new File("../../../libnd4j/tests_cpu/resources/transpose.fb"));
+            //return;
+        } else if (execType.equals(ExecuteWith.JUST_PRINT)) {
+            val string = graph.asFlatPrint();
+
+            log.info("Graph structure: \n{}", string);
+            return;
         }
 
         INDArray tfPred = predictions.get("output");

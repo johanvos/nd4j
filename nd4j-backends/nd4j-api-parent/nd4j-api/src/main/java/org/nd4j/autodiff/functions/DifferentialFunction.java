@@ -209,6 +209,19 @@ public abstract class DifferentialFunction implements Differential {
 
 
 
+    public boolean hasArgs() {
+        val args = args();
+        boolean argsHasArgs = true;
+        if(args != null) {
+            for(val arg : args()) {
+                if(arg.args() == null)
+                    return false;
+            }
+        }
+
+        return args != null && args.length >= 1;
+    }
+
     /**
      * Get the output functions for this function
      * @return
@@ -249,12 +262,17 @@ public abstract class DifferentialFunction implements Differential {
 
     //by default no op, used for certain situations like
     //place holder arrays
-    public void initWithArrays(Map<String,INDArray> arrayMap) {
-        if(hasPlaceHolderInputs()) {
+    public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
+        val shapeCalc = calculateOutputShape();
+        if(hasPlaceHolderInputs() && shapeCalc != null && !shapeCalc.isEmpty()) {
             //update place holder shapes in case the shapes
             // need to be resolved
             //post adding the variables to the graph.
-            sameDiff.updateShapeForVertexId(resultVertexId(),calculateOutputShape().get(0));
+            if(sameDiff.shapeAlreadyExistsForVertexId(resultVertexId()))
+                sameDiff.updateShapeForVertexId(resultVertexId(),shapeCalc.get(0));
+            else
+                sameDiff.putShapeForVertexId(resultVertexId(),shapeCalc.get(0));
+
         }
     }
 
@@ -327,15 +345,14 @@ public abstract class DifferentialFunction implements Differential {
 
     @JsonIgnore
     private INDArray getX() {
-        INDArray ret =  args()[0].getResult().getArr();
+        INDArray ret =  sameDiff.getArrForVertexId(args()[0].resultVertexId());
         return ret;
     }
 
     @JsonIgnore
     private INDArray getY() {
         if(args().length > 1) {
-            SDVariable opId = args()[1].getResult();
-            INDArray ret = opId.getArr();
+            INDArray ret =  sameDiff.getArrForVertexId(args()[1].resultVertexId());
             return ret;
         }
         return null;
@@ -352,7 +369,7 @@ public abstract class DifferentialFunction implements Differential {
 
 
     public void fillInArrays() {
-        if(this instanceof Op){
+        if(this instanceof Op) {
             Op op = (Op) this;
             op.setX(getX());
             //y is often optional for many problems

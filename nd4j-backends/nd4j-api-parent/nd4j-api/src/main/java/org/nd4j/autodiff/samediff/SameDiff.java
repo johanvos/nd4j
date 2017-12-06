@@ -264,22 +264,16 @@ public class SameDiff {
     public DifferentialFunction[] getArgsFor(DifferentialFunction output) {
         Set<DifferentialFunction> ret = new LinkedHashSet<>();
         val from = graph().getFromFor(output.getVertexId());
-        val singlularFunction = getFunctionForVertexId(from);
-        if(singlularFunction != null)
-            ret.add(singlularFunction);
-
-        for(int i = 0; i < from.length; i++) {
+        for (int i = 0; i < from.length; i++) {
             val currFunc = getFunctionForVertexId(new int[]{from[i]});
-            if(currFunc != null) {
+            if (currFunc != null && !ret.contains(currFunc)) {
                 ret.add(currFunc);
-            }
-            else if(getVariableForVertexId(new int[]{from[i]}) != null) {
+            } else if (getVariableForVertexId(new int[]{from[i]}) != null) {
                 ret.add(getVariableForVertexId(new int[]{from[i]}));
-            }
-
-            else
+            } else
                 throw new ND4JIllegalStateException("No function or variable found for " + Arrays.toString(new int[]{from[i]}));
         }
+
 
         return ret.toArray(new DifferentialFunction[ret.size()]);
     }
@@ -383,13 +377,15 @@ public class SameDiff {
      * @param shape the shape to associate with
      */
     public void updateShapeForVertexId(int[] vertexId,int[] shape) {
+        if(shape == null || shape.length < 2) {
+            throw new ND4JIllegalStateException("Shape must not be null!");
+        }
+
+
         if(vertexId == null) {
             throw new ND4JIllegalStateException("Null vertex ids not allowed");
         }
 
-        if(!vertexIdToShape.containsKey(vertexId)) {
-            throw new ND4JIllegalStateException("Shape for " + Arrays.toString(vertexId) + " does not already exist! Please use putShapeForVertexId instead.");
-        }
 
         if(shape == null) {
             throw new ND4JIllegalStateException("Null shapes not allowed!");
@@ -409,6 +405,10 @@ public class SameDiff {
      * @param shape the shape to assciate with
      */
     public void putShapeForVertexId(int[] vertexId,int[] shape) {
+        if(shape == null || shape.length < 2) {
+            throw new ND4JIllegalStateException("Shape must not be null!");
+        }
+
         if(vertexIdToShape.containsKey(vertexId)) {
             throw new ND4JIllegalStateException("Shape for " + Arrays.toString(vertexId) + " already exists!");
         }
@@ -2919,7 +2919,7 @@ public class SameDiff {
      * @return
      */
     public SDVariable lossNegativeLogLikelihood(String name,SDVariable iX, SDVariable i_y, int...dimensions) {
-        DifferentialFunction result = functionFactory.lossMSLE(getFunctionInput(iX),getFunctionInput(i_y),dimensions);
+        DifferentialFunction result = functionFactory.lossNegativeLogLikelihood(getFunctionInput(iX), getFunctionInput(i_y), dimensions);
         updateVariableName(result.getVertexId(),name);
         return getVariableForVertexId(result.getVertexId());
     }
@@ -3107,13 +3107,15 @@ public class SameDiff {
             if (differentialFunction instanceof ScalarOp) {
                 ScalarOp scalarOp = (ScalarOp) differentialFunction;
                 scalarOp.setScalar(differentialFunction.getScalarValue());
-
             }
-
 
             Op op = (Op) differentialFunction;
             differentialFunction.fillInArrays();
             op.setN(op.x().length());
+
+        }
+        else if(differentialFunction instanceof DynamicCustomOp) {
+            DynamicCustomOp dynamicCustomOp = (DynamicCustomOp) differentialFunction;
 
         }
         //if and while are special
@@ -3510,9 +3512,6 @@ public class SameDiff {
      */
     public INDArray execWithPlaceHolderAndEndResult(Map<String,INDArray> inputs) {
         resolveVariablesWith(inputs);
-        //resolve the place holders
-
-
         return execAndEndResult();
     }
 
@@ -3605,6 +3604,10 @@ public class SameDiff {
 
         for(val arrayEntry : arrays.entrySet()) {
             val varForName = getVariable(arrayEntry.getKey());
+            if(varForName == null) {
+                throw new ND4JIllegalStateException("No variable name found for " + arrayEntry.getKey());
+            }
+
             if(placeHolderOriginalShapes.containsKey(varForName.getVertexId())) {
                 val originalShape = placeHolderOriginalShapes.get(varForName.getVertexId());
                 for(int i = 0; i < originalShape.length; i++) {
@@ -3634,12 +3637,17 @@ public class SameDiff {
         //update functions after variables are set
         for(DifferentialFunction function : functionInstances.values()) {
             //resolve arguments in case
-            for(DifferentialFunction arg : function.args()) {
+            val args = function.args();
+            for(DifferentialFunction arg : args) {
+                /**
+                 * Need to resolve shapes and arrays here.
+                 */
                 if(!initialized.contains(arg.resultVertexId())) {
                     arg.initWithArrays(arrays);
                     initialized.add(arg.resultVertexId());
                 }
             }
+
 
             if(!initialized.contains(function.resultVertexId())) {
                 function.initWithArrays(arrays);
@@ -3877,6 +3885,70 @@ public class SameDiff {
 
 
             }
+            else if(differentialFunction instanceof CustomOp) {
+                DynamicCustomOp customOp = (DynamicCustomOp) differentialFunction;
+                /**
+                 * Setup outputs and inputs relative to samediff.
+                 */
+
+                val inputs = customOp.args();
+                for(DifferentialFunction output : inputs) {
+                    val outputVertexId = output.resultVertexId();
+                    val getArr = getArrForVertexId(outputVertexId);
+                    if(getArr == null) {
+                        val shape = getShapeForVertexId(outputVertexId);
+                        val var = getVariableForVertexId(outputVertexId);
+                        val otherArr = var.getWeightInitScheme().create(shape);
+                        putArrayForVertexId(outputVertexId,otherArr);
+                        customOp.addInputArgument(otherArr);
+                    }
+
+                    else if(customOp.numInputArguments() < inputs.length)
+                        customOp.addInputArgument(getArr);
+
+                }
+
+                val outputs = customOp.outputFunctions();
+                for(DifferentialFunction output : outputs) {
+                    if(output == null)
+                        throw new ND4JIllegalStateException("No output can be null");
+                    val outputVertexId = output.resultVertexId();
+                    val getArr = getArrForVertexId(outputVertexId);
+                    if(getArr == null) {
+                        //ensure shape is defined for output as well
+                        //just in case it hasn't run already
+                        int[] shape = getShapeForVertexId(outputVertexId);
+                        val var = getVariableForVertexId(outputVertexId);
+                        if(shape == null) {
+                            val newOutputShape = customOp.calculateOutputShape();
+                            if(newOutputShape == null ||  newOutputShape.isEmpty()) {
+                                throw new ND4JIllegalStateException("Unable to compute output shape! CalculateOutputShape on op returned null or empty!");
+                            }
+
+                            if(newOutputShape.size() != outputs.length) {
+                                throw new ND4JIllegalStateException("Outputs size not equal to outputs length. Missing output arrays possibly?");
+                            }
+
+                            for(int outputIdx = 0; outputIdx < newOutputShape.size(); outputIdx++) {
+                                val outputI = outputs[outputIdx];
+                                putShapeForVertexId(outputI.resultVertexId(),newOutputShape.get(outputIdx));
+                            }
+
+                            shape = getShapeForVertexId(outputVertexId);
+                        }
+
+                        if(customOp.numOutputArguments() < 1) {
+                            val otherArr = var.getWeightInitScheme().create(shape);
+                            putArrayForVertexId(outputVertexId, otherArr);
+                            customOp.addOutputArgument(otherArr);
+                        }
+                    }
+                    else if(customOp.numOutputArguments() < outputs.length)
+                        customOp.addOutputArgument(getArr);
+                }
+
+                Nd4j.getExecutioner().exec(customOp);
+            }
 
             else if(differentialFunction instanceof Op) {
                 Op op = (Op) differentialFunction;
@@ -3999,7 +4071,7 @@ public class SameDiff {
 
     protected int asFlatNode(@NonNull DifferentialFunction node, @NonNull FlatBufferBuilder bufferBuilder) {
         val hash = getOpNum(node.opName(), node.opType());
-        log.info("Exporting node: [{}:<{}> - {}]", node.opName(), node.tensorflowName(), hash);
+        log.info("Exporting node: [{}:<{}>; OpType: {}; Hash/opNum: {}]", node.opName(), node.tensorflowName(), node.opType(), hash);
 
         float[] extras = node.getExtraArgs() != null ? new float[node.getExtraArgs().length] : new float[0];
         for (int e = 0; e < extras.length; e++) {
@@ -4009,7 +4081,7 @@ public class SameDiff {
         int[] extraBits = null;
         if(node.opType() == Op.Type.CUSTOM) {
             DynamicCustomOp dynamicCustomOp = (DynamicCustomOp) node;
-            extraBits = Ints.toArray(dynamicCustomOp.getIArguments());
+            extraBits = dynamicCustomOp.iArgs();
         }
         else
             extraBits = new int[]{};
@@ -4151,6 +4223,69 @@ public class SameDiff {
         }
     }
 
+    public String asFlatPrint() {
+        val sb = new StringBuilder();
+        val fb = asFlatBuffers();
+
+        val graph = FlatGraph.getRootAsFlatGraph(fb);
+
+        sb.append("\nExternal variables:\n\n");
+        for (int e = 0; e < graph.variablesLength(); e++) {
+            val var = graph.variables(e);
+            val ndarray = Nd4j.createFromFlatArray(var.ndarray());
+
+            sb.append(var.id().first())
+                    .append(":<").append(var.name()).append("> ")
+                    .append(Arrays.toString(ndarray.shapeInfoDataBuffer().asInt())).append("\n");
+        }
+
+        val map = Nd4j.getExecutioner().getCustomOperations();
+
+
+        sb.append("\nOps sequence:\n\n");
+        for (int e = 0; e <graph.nodesLength(); e++) {
+            val node = graph.nodes(e);
+
+            log.info("{}:<{}>", node.id(), node.name());
+            sb.append(node.id())
+                    .append(":<").append(node.name()).append("> ").append(SameDiff.getTypeFromByte(node.opType()));
+
+            if (SameDiff.getTypeFromByte(node.opType()) != Op.Type.CUSTOM)
+                sb.append(": ").append(node.opNum());
+            else {
+                val keys = map.keySet();
+                String opName = null;
+                for (val k: keys) {
+                    val d = map.get(k);
+                    if (d.getHash() == node.opNum())
+                        opName = k;
+                }
+
+                if (opName == null)
+                    opName = "unknown";
+
+                sb.append(": ").append(opName);
+            }
+
+            sb.append("; Inputs: {");
+
+            for (int i = 0; i < node.inputPairedLength(); i++) {
+                val pair = node.inputPaired(i);
+
+                sb.append("[").append(pair.first()).append(":").append(pair.second()).append("]");
+
+                if (i < node.inputPairedLength() - 1)
+                    sb.append(", ");
+            }
+
+            sb.append("}\n");
+        }
+
+
+
+        return sb.toString();
+    }
+
     public static DataBuffer.Type getDataTypeFromByte(byte val) {
         if (val == DataType.FLOAT)
             return DataBuffer.Type.FLOAT;
@@ -4180,10 +4315,44 @@ public class SameDiff {
             return 40;
         } else if (type == Op.Type.IF || type == Op.Type.CONDITIONAL) {
             return 10;
-        } else if (type == Op.Type.CUSTOM)
+        } else if (type == Op.Type.CUSTOM) {
+            val name2 = Nd4j.getExecutioner().getCustomOperations().get(name.toLowerCase());
+            if(name2 == null)
+                return 0;
             return Nd4j.getExecutioner().getCustomOperations().get(name.toLowerCase()).getHash();
+
+        }
         else
             return (long) Nd4j.getOpFactory().getOpNumByName(name);
+    }
+
+    public static Op.Type getTypeFromByte(byte type) {
+        switch (type) {
+            case OpType.SCALAR:
+                return Op.Type.SCALAR;
+            case OpType.BROADCAST:
+                return Op.Type.BROADCAST;
+            case OpType.TRANSFORM:
+                return Op.Type.TRANSFORM;
+            case OpType.ACCUMULATION:
+                return Op.Type.REDUCE;
+            case OpType.ACCUMULATION3:
+                return Op.Type.REDUCE3;
+            case OpType.INDEX_ACCUMULATION:
+                return Op.Type.INDEXREDUCE;
+            case OpType.RANDOM:
+                return Op.Type.RANDOM;
+            case OpType.LOGIC:
+                return Op.Type.META;
+            case OpType.CUSTOM:
+                return Op.Type.CUSTOM;
+            case OpType.SHAPE:
+                return Op.Type.SHAPE;
+            case OpType.PAIRWISE:
+                return Op.Type.PAIRWISE;
+            default:
+                throw new UnsupportedOperationException("Unknown op type passed in: " + type);
+        }
     }
 
 
@@ -4202,6 +4371,8 @@ public class SameDiff {
                 return OpType.ACCUMULATION3;
             case INDEXREDUCE:
                 return OpType.INDEX_ACCUMULATION;
+            case RANDOM:
+                return OpType.RANDOM;
             case LOOP:
                 return OpType.LOGIC;
             case RETURN:

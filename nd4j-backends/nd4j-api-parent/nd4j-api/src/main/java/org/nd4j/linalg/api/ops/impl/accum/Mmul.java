@@ -82,8 +82,11 @@ public class Mmul extends TensorMmul {
 
     public Mmul() {}
 
+    @Override
+    public List<int[]> calculateOutputShape() {
 
-
+        return super.calculateOutputShape();
+    }
 
 
 
@@ -108,29 +111,6 @@ public class Mmul extends TensorMmul {
         return "mmul";
     }
 
-
-    @Override
-    public long n() {
-        return 0;
-    }
-
-    @Override
-    public boolean isPassThrough() {
-        return true;
-    }
-
-    @Override
-    public boolean isExecSpecial() {
-        return true;
-    }
-
-    @Override
-    public void exec() {
-        if(this.z != null)
-            x.mmul(y,z,mMulTranspose);
-        else
-            this.z = x.mmul(y,mMulTranspose);
-    }
 
 
     @Override

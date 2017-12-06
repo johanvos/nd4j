@@ -31,16 +31,16 @@ public class BatchNorm extends DynamicCustomOp {
         this.isLockGammaBeta = isLockGammaBeta;
         this.isMiniBatch = isMiniBatch;
         if(inputArrays != null) {
-            getInputArguments().addAll(Arrays.asList(inputArrays));
+            addInputArgument(inputArrays);
         }
 
         if(outputArrays != null) {
-            getOutputArguments().addAll(Arrays.asList(outputArrays));
+            addOutputArgument(outputArrays);
         }
 
-        getIArguments().add(fromBoolean(training));
-        getIArguments().add(fromBoolean(isLockGammaBeta));
-        getIArguments().add(fromBoolean(isMiniBatch));
+        addIArgument(fromBoolean(training));
+        addIArgument(fromBoolean(isLockGammaBeta));
+        addIArgument(fromBoolean(isMiniBatch));
     }
 
 
@@ -74,7 +74,7 @@ public class BatchNorm extends DynamicCustomOp {
                 .isMiniBatch(isMiniBatch)
                 .training(training)
                 .build();
-        ret.addAll(Arrays.asList(batchNormDerivative.getOutputFunctions()));
+        ret.addAll(Arrays.asList(batchNormDerivative.outputFunctions()));
         return ret;
     }
 

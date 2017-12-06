@@ -1,14 +1,14 @@
 package org.nd4j.linalg.api.ops.random.impl;
 
-import lombok.NonNull;
 import lombok.val;
 import onnx.OnnxProto3;
 import org.nd4j.autodiff.functions.DifferentialFunction;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.imports.graphmapper.tf.TFGraphMapper;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.DynamicCustomOp;
 import org.nd4j.linalg.api.ops.Op;
-import org.nd4j.linalg.api.ops.random.BaseRandomOp;
+import org.nd4j.linalg.exception.ND4JIllegalStateException;
 import org.nd4j.linalg.factory.Nd4j;
 import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
@@ -22,10 +22,10 @@ import java.util.Map;
  *
  * @author raver119@gmail.com
  */
-public class Range extends BaseRandomOp {
-    private double from;
-    private double to;
-    private double delta;
+public class Range extends DynamicCustomOp {
+    private Double from;
+    private Double to;
+    private Double delta;
     //used for initWithArrays when there are place holder
     //values that need to be resolved
     private int[] fromVertexId,toVertexId,deltaVertexId;
@@ -33,16 +33,7 @@ public class Range extends BaseRandomOp {
         // no-op
     }
 
-    public Range(double from, double to, int length) {
-        this(Nd4j.createUninitialized(new int[] {1, length}, Nd4j.order()), from, to);
-    }
 
-    public Range(@NonNull INDArray z, double from, double to) {
-        this.from = from;
-        this.to = to;
-        init(null, null, z, z.lengthLong());
-        this.extraArgs = new Object[] {from, to};
-    }
 
     @Override
     public int opNum() {
@@ -65,10 +56,6 @@ public class Range extends BaseRandomOp {
     }
 
 
-    @Override
-    public List<int[]> calculateOutputShape() {
-        return super.calculateOutputShape();
-    }
 
     @Override
     public void initFromTensorFlow(NodeDef nodeDef, SameDiff initWith, Map<String, AttrValue> attributesForNode, GraphDef graph) {
@@ -97,31 +84,31 @@ public class Range extends BaseRandomOp {
             this.from = start.getDouble(0);
             this.to = end.getDouble(0);
             this.delta = delta.getDouble(0);
-
+            addTArgument(this.from,this.to,this.delta);
+            if(sameDiff.getArrForVertexId(resultVertexId()) == null) {
+                val arr = Nd4j.create(getResultShape());
+                sameDiff.putArrayForVertexId(resultVertexId(), arr);
+                addOutputArgument(arr);
+            }
         }
 
         this.fromVertexId = sameDiff.getVariable(startNode.getName()).resultVertexId();
         this.toVertexId = sameDiff.getVariable(endNode.getName()).getVertexId();
         this.deltaVertexId = sameDiff.getVariable(deltaNode.getName()).getVertexId();
 
-
-
-
-
     }
+
+
 
     @Override
     public void initFromOnnx(OnnxProto3.NodeProto node, SameDiff initWith, Map<String, OnnxProto3.AttributeProto> attributesForNode, OnnxProto3.GraphProto graph) {
         super.initFromOnnx(node, initWith, attributesForNode, graph);
     }
 
-    @Override
-    public int[] getResultShape() {
-        return new int[] {1, Math.max(1,(int) (from - to))};
-    }
+
 
     @Override
-    public void initWithArrays(Map<String, INDArray> arrayMap) {
+    public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
         super.initWithArrays(arrayMap);
         val start = sameDiff.getVariableForVertexId(fromVertexId).getArr();
         val end = sameDiff.getVariableForVertexId(toVertexId).getArr();
@@ -130,6 +117,21 @@ public class Range extends BaseRandomOp {
             this.from = start.getDouble(0);
             this.to = end.getDouble(0);
             this.delta = delta.getDouble(0);
+            addTArgument(this.from,this.to,this.delta);
+            if(sameDiff.getArrForVertexId(resultVertexId()) == null) {
+                val arr = Nd4j.create(getResultShape());
+                sameDiff.putArrayForVertexId(resultVertexId(), arr);
+                addOutputArgument(arr);
+            }
+
+        }
+        else {
+            StringBuilder errorMessage = new StringBuilder();
+            errorMessage.append("Not all values of range mapped. ");
+            errorMessage.append("Start status is null " + (start == null));
+            errorMessage.append("End status is null " + (end == null));
+            errorMessage.append("Delta status is null " + (delta == null));
+            throw new ND4JIllegalStateException(errorMessage.toString());
         }
 
     }
@@ -141,6 +143,6 @@ public class Range extends BaseRandomOp {
 
     @Override
     public Op.Type opType() {
-        return Op.Type.RETURN;
+        return Op.Type.CUSTOM;
     }
 }
