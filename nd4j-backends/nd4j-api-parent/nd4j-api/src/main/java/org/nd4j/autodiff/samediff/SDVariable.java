@@ -4,12 +4,14 @@ import com.google.common.base.Preconditions;
 import lombok.*;
 import onnx.OnnxProto3;
 import org.nd4j.autodiff.functions.DifferentialFunction;
+import org.nd4j.autodiff.opstate.NDArrayVertex;
 import org.nd4j.imports.NoOpNameFoundException;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.exception.ND4JIllegalStateException;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.util.ArrayUtil;
+import org.nd4j.shade.jackson.annotation.JsonIgnore;
 import org.nd4j.weightinit.WeightInitScheme;
 import org.nd4j.weightinit.impl.ZeroInitScheme;
 import org.tensorflow.framework.AttrValue;
@@ -20,6 +22,7 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  *
@@ -35,20 +38,34 @@ import java.util.Map;
 @Data
 @NoArgsConstructor
 public class SDVariable extends DifferentialFunction implements Serializable {
+
+
     @Getter
     @Setter
     private String varName;
     @Getter
     @Setter
     protected WeightInitScheme weightInitScheme;
+    @Getter
+    @Setter
+    @JsonIgnore
+    protected Integer vertexId;
+
+    @Getter
+    @Setter
+    @JsonIgnore
+    protected int depth;
+
+
+
     @Builder
     private SDVariable(String varName,
                        SameDiff sameDiff,
                        int[] shape,
                        WeightInitScheme weightInitScheme,
-                       int[] vertexId) {
+                       int vertexId) {
         if(shape != null && shape.length >= 2)
-             sameDiff.putShapeForVertexId(vertexId,Shape.resolveNegativeShapeIfNeccessary(new int[shape.length],shape));
+            sameDiff.putShapeForVertexId(vertexId,Shape.resolveNegativeShapeIfNeccessary(new int[shape.length],shape));
         this.varName = varName;
         this.weightInitScheme = weightInitScheme;
         this.vertexId = vertexId;
@@ -60,7 +77,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
         this.sameDiff = sameDiff;
 
         if(this.vertexId == null) {
-            this.vertexId = new int[] {sameDiff.graph().nextVertexId()};
+            this.vertexId =  sameDiff.graph().nextVertexId();
         }
 
 
@@ -72,15 +89,22 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     }
 
     @Override
-    public boolean isVariable() {
-        return true;
+    public SDVariable[] outputVariables() {
+        return new SDVariable[0];
     }
 
 
     @Override
-    public SDVariable getResult() {
-        return this;
+    public boolean isVariable() {
+        return true;
     }
+
+    public int depth() {
+        if(depth == 0)
+            return sameDiff.graph().getVertex(vertexId).depth();
+        return depth;
+    }
+
 
     @Override
     public void initFromTensorFlow(NodeDef nodeDef, SameDiff initWith, Map<String, AttrValue> attributesForNode, GraphDef graph) {
@@ -94,13 +118,25 @@ public class SDVariable extends DifferentialFunction implements Serializable {
 
 
     @Override
-    public int[] getResultShape() {
-        return getShape();
-    }
-
-    @Override
     public void initWithArrays(Map<String, INDArray> arrayMap, Object... extraArgs) {
         //no-op
+    }
+
+
+    /**
+     * Allocate and return a  new array
+     * based on the vertex id and weight initialization.
+     * @return the allocated array
+     */
+    public INDArray storeAndAllocateNewArray() {
+        val shape = sameDiff.getShapeForVertexId(vertexId);
+        if(shape == null) {
+            throw new ND4JIllegalStateException("Unable to allocate new array. No shape found for variable " + varName);
+        }
+
+        val arr = getWeightInitScheme().create(shape);
+        sameDiff.putArrayForVertexId(vertexId,arr);
+        return arr;
     }
 
     /**
@@ -165,7 +201,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     }
 
     @Override
-    public List<DifferentialFunction> doDiff(List<DifferentialFunction> f1) {
+    public List<SDVariable> doDiff(List<SDVariable> f1) {
         throw new ND4JIllegalStateException("Unable to differentiate a variable! Must be a function.");
     }
 
@@ -447,7 +483,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable rsub(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().rsub(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().rsub(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -458,7 +494,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable rdiv(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().rdiv(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().rdiv(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -469,7 +505,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable add(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().add(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().add(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -480,8 +516,8 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable sub(String varName, double sameDiffVariable) {
-        DifferentialFunction right = getFunction(this);
-        DifferentialFunction result = sameDiff.f().sub(right,sameDiffVariable);
+        SDVariable right = this;
+        val result = sameDiff.f().sub(right,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -492,7 +528,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable div(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().div(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().div(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -503,7 +539,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable mul(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().mul(getFunction(this)
+        val function = sameDiff.f().mul(this
                 , sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(), varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
@@ -515,7 +551,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable rsubi(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().rsubi(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().rsubi(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -526,7 +562,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable rdivi(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().rdivi(getFunction(this)
+        SDVariable function = sameDiff.f().rdivi(this
                 ,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
@@ -538,7 +574,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable addi(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().addi(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().addi(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -549,7 +585,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable subi(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().subi(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().subi(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -560,7 +596,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable divi(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().divi(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().divi(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
@@ -571,12 +607,29 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      * @return
      */
     public SDVariable muli(String varName, double sameDiffVariable) {
-        DifferentialFunction function = sameDiff.f().muli(getFunction(this),sameDiffVariable);
+        val function = sameDiff.f().muli(this,sameDiffVariable);
         sameDiff.updateVariableName(function.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(function.getVertexId());
     }
 
 
+    protected void addAsNewVertexId(int vertexId) {
+        this.vertexId = vertexId;
+
+        SDVariable var = sameDiff.var(opName() + "-" + UUID.randomUUID().toString(),getShape(),new ZeroInitScheme('f'),vertexId,maxDepthForArgs());
+        if(sameDiff.graph().getVertex(vertexId) == null) {
+            NDArrayVertex ndArrayVertex = new NDArrayVertex(sameDiff, var.vertexId, depth(), var);
+            var.setVertexId(ndArrayVertex.vertexID());
+        }
+
+        sameDiff.addVariable(var);
+
+    }
+
+    protected void addAsNewVertexId() {
+        int vertexId = sameDiff.graph().getNextVertexId()  > sameDiff.graph().numVertices() ? sameDiff.graph().getNextVertexId() : sameDiff.graph().nextVertexId();
+        addAsNewVertexId(vertexId);
+    }
 
     //end scalars
 
@@ -588,7 +641,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable rsub(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().rsub(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().rsub(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -600,7 +653,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable rdiv(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().rdiv(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().rdiv(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -612,7 +665,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable add(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().add(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().add(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -625,9 +678,9 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     public SDVariable sub(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
 
-        DifferentialFunction left = getFunction(this);
-        DifferentialFunction right = getFunction(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().sub(left,right);
+        SDVariable left = this;
+        SDVariable right = sameDiffVariable;
+        val result = sameDiff.f().sub(left,right);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -639,7 +692,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable div(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().div(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().div(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -652,12 +705,12 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     public SDVariable mul(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
 
-        DifferentialFunction left = getFunction(this);
-        DifferentialFunction right = getFunction(sameDiffVariable);
+        SDVariable left = this;
+        SDVariable right = sameDiffVariable;
         Preconditions.checkState(left != null,"Left input is null!");
         Preconditions.checkState(right != null,"Right input is null!");
 
-        DifferentialFunction result = sameDiff.f().mul(left,right);
+        val result = sameDiff.f().mul(left,right);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -670,7 +723,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable rsubi(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().rsubi(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().rsubi(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -682,7 +735,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable rdivi(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().rdivi(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().rdivi(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -694,7 +747,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable addi(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().addi(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().addi(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -707,9 +760,9 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     public SDVariable subi(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
 
-        DifferentialFunction left = getFunction(this);
-        DifferentialFunction right = getFunction(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().subi(left,right);
+        SDVariable left = this;
+        SDVariable right = sameDiffVariable;
+        val result = sameDiff.f().subi(left,right);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -721,7 +774,7 @@ public class SDVariable extends DifferentialFunction implements Serializable {
      */
     public SDVariable divi(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().divi(getFunction(this),getFunction(sameDiffVariable));
+        val result = sameDiff.f().divi(this,sameDiffVariable);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -734,9 +787,9 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     public SDVariable muli(String varName, SDVariable sameDiffVariable) {
         assertShapeEquals(sameDiffVariable);
 
-        DifferentialFunction left = getFunction(this);
-        DifferentialFunction right = getFunction(sameDiffVariable);
-        DifferentialFunction result = sameDiff.f().muli(left,right);
+        SDVariable left = this;
+        SDVariable right = sameDiffVariable;
+        SDVariable result = sameDiff.f().muli(left,right);
         sameDiff.updateVariableName(result.getVertexId(),varName);
         return sameDiff.getVariableForVertexId(result.getVertexId());
     }
@@ -771,23 +824,6 @@ public class SDVariable extends DifferentialFunction implements Serializable {
     }
 
 
-    /**
-     * Return the underlying differential
-     * function
-     * or array field.
-     * @param variable
-     * @return
-     */
-    public static DifferentialFunction getFunction(SDVariable variable) {
-        if(variable == null)
-            throw new IllegalArgumentException("Unable to get function for null variable");
-        if(variable.vertexId == null)
-            return variable;
-        DifferentialFunction result = variable.getSameDiff().getVariableForVertexId(variable.vertexId);
-        if(result != null)
-            return result;
-        return variable;
-    }
 
     @Override
     public String toString() {

@@ -19,10 +19,10 @@
 
 package org.nd4j.linalg.api.ops.impl.transforms.arithmetic;
 
-import org.nd4j.autodiff.functions.DifferentialFunction;
+import org.nd4j.autodiff.samediff.SDVariable;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.ops.BaseTransformOp;
+import org.nd4j.linalg.api.ops.impl.transforms.BaseDynamicTransformOp;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,46 +32,24 @@ import java.util.List;
  *
  * @author Adam Gibson
  */
-public class SubOp extends BaseTransformOp {
-    public SubOp(SameDiff sameDiff, DifferentialFunction i_v1, DifferentialFunction i_v2) {
-        super(sameDiff, i_v1, i_v2);
-    }
-
-    public SubOp(SameDiff sameDiff, DifferentialFunction i_v1, DifferentialFunction i_v2, boolean inPlace) {
-        super(sameDiff, i_v1, i_v2, inPlace);
-    }
+public class SubOp extends BaseDynamicTransformOp {
 
     public SubOp() {}
 
-    public SubOp(INDArray x, INDArray y, INDArray z, long n) {
-        super(x, y, z, n);
+    public SubOp( SameDiff sameDiff, SDVariable[] args, boolean inPlace) {
+        super(sameDiff, args, inPlace);
     }
 
-    public SubOp(INDArray x) {
-        super(x);
+    public SubOp( INDArray[] inputs, INDArray[] outputs) {
+        super(inputs, outputs);
     }
 
-    public SubOp(INDArray x, INDArray z) {
-        super(x, z);
-    }
-
-    public SubOp(INDArray x, INDArray z, long n) {
-        super(x, z, n);
-    }
-
-    public SubOp(INDArray x, INDArray y, INDArray z) {
-        super(x, y, z, x.lengthLong());
-    }
-
-    @Override
-    public int opNum() {
-        return 9;
-    }
 
     @Override
     public String opName() {
-        return "sub";
+        return "subtract";
     }
+
 
     @Override
     public String onnxName() {
@@ -84,21 +62,11 @@ public class SubOp extends BaseTransformOp {
     }
 
 
-
-
     @Override
-    public void init(INDArray x, INDArray y, INDArray z, long n) {
-        super.init(x, y, z, n);
-        if (y == null)
-            throw new IllegalArgumentException("No components to subtract");
-    }
-
-
-    @Override
-    public List<DifferentialFunction> doDiff(List<DifferentialFunction> i_v) {
-        DifferentialFunction gradWrtX = i_v.get(0);
-        DifferentialFunction gradWrtY = f().neg(i_v.get(0));
-        List<DifferentialFunction> ret = new ArrayList<>();
+    public List<SDVariable> doDiff(List<SDVariable> i_v) {
+        SDVariable gradWrtX = i_v.get(0);
+        SDVariable gradWrtY = f().neg(i_v.get(0));
+        List<SDVariable> ret = new ArrayList<>();
         ret.add(gradWrtX);
         ret.add(gradWrtY);
         return ret;

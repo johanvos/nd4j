@@ -2,7 +2,7 @@ package org.nd4j.linalg.api.ops.impl.shape;
 
 import lombok.val;
 import onnx.OnnxProto3;
-import org.nd4j.autodiff.functions.DifferentialFunction;
+import org.nd4j.autodiff.samediff.SDVariable;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.imports.NoOpNameFoundException;
 import org.nd4j.linalg.api.ops.DynamicCustomOp;
@@ -31,13 +31,18 @@ public class Stack  extends DynamicCustomOp {
     }
 
     @Override
-    public List<DifferentialFunction> doDiff(List<DifferentialFunction> f1) {
+    public List<SDVariable> doDiff(List<SDVariable> f1) {
         throw new UnsupportedOperationException("Differentiation not supported yet.");
     }
 
     @Override
     public String toString() {
         return opName();
+    }
+
+    @Override
+    public String[] tensorflowNames() {
+        return new String[] {"Pack","Stack"};
     }
 
     @Override

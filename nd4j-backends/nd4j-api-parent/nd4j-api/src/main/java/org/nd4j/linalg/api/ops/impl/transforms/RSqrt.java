@@ -20,6 +20,7 @@
 package org.nd4j.linalg.api.ops.impl.transforms;
 
 import org.nd4j.autodiff.functions.DifferentialFunction;
+import org.nd4j.autodiff.samediff.SDVariable;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.BaseTransformOp;
@@ -27,20 +28,20 @@ import org.nd4j.linalg.api.ops.BaseTransformOp;
 import java.util.List;
 
 /**
- * Sqrt function
+ * RSqrt function
  *
  * @author Adam Gibson
- */
+  */
 public class RSqrt extends BaseTransformOp {
-    public RSqrt(SameDiff sameDiff, DifferentialFunction i_v, boolean inPlace) {
+    public RSqrt(SameDiff sameDiff, SDVariable i_v, boolean inPlace) {
         super(sameDiff, i_v, inPlace);
     }
 
-    public RSqrt(SameDiff sameDiff, DifferentialFunction i_v, int[] shape, boolean inPlace, Object[] extraArgs) {
+    public RSqrt(SameDiff sameDiff, SDVariable i_v, int[] shape, boolean inPlace, Object[] extraArgs) {
         super(sameDiff, i_v, shape, inPlace, extraArgs);
     }
 
-    public RSqrt(SameDiff sameDiff, DifferentialFunction i_v, Object[] extraArgs) {
+    public RSqrt(SameDiff sameDiff, SDVariable i_v, Object[] extraArgs) {
         super(sameDiff, i_v, extraArgs);
     }
 
@@ -64,7 +65,7 @@ public class RSqrt extends BaseTransformOp {
 
     @Override
     public int opNum() {
-        return 14;
+        return 76;
     }
 
     @Override
@@ -85,7 +86,7 @@ public class RSqrt extends BaseTransformOp {
 
 
     @Override
-    public List<DifferentialFunction> doDiff(List<DifferentialFunction> i_v) {
+    public List<SDVariable> doDiff(List<SDVariable> i_v) {
         throw new UnsupportedOperationException();
     }
 

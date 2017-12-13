@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import onnx.OnnxProto3;
 import org.nd4j.autodiff.samediff.SameDiff;
+import org.nd4j.imports.NoOpNameFoundException;
 import org.nd4j.linalg.api.ops.DynamicCustomOp;
 import org.nd4j.linalg.exception.ND4JIllegalStateException;
 import org.tensorflow.framework.AttrValue;
@@ -16,7 +17,6 @@ import java.util.Map;
 
 @Slf4j
 public class MergeMax extends DynamicCustomOp {
-    private int concatDimension;
 
     @Override
     public String opName() {
@@ -28,46 +28,14 @@ public class MergeMax extends DynamicCustomOp {
     @Override
     public List<int[]> calculateOutputShape() {
         List<int[]> ret = new ArrayList<>(1);
-        ret.add(arg().getResultShape());
+        ret.add(arg().getShape());
         return ret;
     }
 
 
     @Override
     public void initFromTensorFlow(NodeDef nodeDef, SameDiff initWith, Map<String, AttrValue> attributesForNode, GraphDef graph) {
-        int idx = -1;
-        int cnt = 0;
-        int concatDimension = 0;
-        for (int i = 0; i < nodeDef.getInputCount(); i++) {
-            val input = nodeDef.getInput(i);
-            val variable = initWith.getVariable(input);
-            // concat dimension is only possible
-            if (variable != null && variable.getArr() == null) {
-                idx = cnt;
-                if(variable.getShape() != null)
-                    concatDimension = variable.getShape()[0];
-                break;
-            } else if (variable != null) {
-                val arr = variable.getArr();
-                if (arr.length() == 1) {
-                    concatDimension = arr.getInt(0);
-                    idx = cnt;
-                    break;
-                }
-            }
-            cnt++;
-        }
-
-        if (idx < 0)
-            throw new ND4JIllegalStateException("Can't find dimension for concatenatiion");
-
-        // if that's convolution graph, we should swap dimensions
-        if (concatDimension == 3)
-            concatDimension = 1;
-
-        this.concatDimension = concatDimension;
-        log.debug("Concat dimension: {}", concatDimension);
-
+        // no-op
     }
 
     @Override
@@ -77,12 +45,12 @@ public class MergeMax extends DynamicCustomOp {
 
     @Override
     public String onnxName() {
-        return "MergeMax";
+        throw new NoOpNameFoundException("No onnx op opName found for " +  opName());
     }
 
     @Override
     public String tensorflowName() {
-        return "AddN";
+        return "MergeMax";
     }
 
 

@@ -2,7 +2,7 @@ package org.nd4j.linalg.api.ops.random.impl;
 
 import lombok.val;
 import onnx.OnnxProto3;
-import org.nd4j.autodiff.functions.DifferentialFunction;
+import org.nd4j.autodiff.samediff.SDVariable;
 import org.nd4j.autodiff.samediff.SameDiff;
 import org.nd4j.imports.graphmapper.tf.TFGraphMapper;
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -14,6 +14,7 @@ import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
 import org.tensorflow.framework.NodeDef;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -28,7 +29,7 @@ public class Range extends DynamicCustomOp {
     private Double delta;
     //used for initWithArrays when there are place holder
     //values that need to be resolved
-    private int[] fromVertexId,toVertexId,deltaVertexId;
+    private int fromVertexId,toVertexId,deltaVertexId;
     public Range() {
         // no-op
     }
@@ -80,19 +81,21 @@ public class Range extends DynamicCustomOp {
         val start = TFGraphMapper.getInstance().getNDArrayFromTensor("value",startNode,graph);
         val end = TFGraphMapper.getInstance().getNDArrayFromTensor("value",endNode,graph);
         val delta = TFGraphMapper.getInstance().getNDArrayFromTensor("value",deltaNode,graph);
+        val outputVars = outputVariables();
         if(start != null && end != null && delta != null) {
             this.from = start.getDouble(0);
             this.to = end.getDouble(0);
             this.delta = delta.getDouble(0);
             addTArgument(this.from,this.to,this.delta);
-            if(sameDiff.getArrForVertexId(resultVertexId()) == null) {
-                val arr = Nd4j.create(getResultShape());
-                sameDiff.putArrayForVertexId(resultVertexId(), arr);
+            val outputVertexId = outputVariables()[0].getVertexId();
+            if(sameDiff.getArrForVertexId(outputVertexId) == null) {
+                val arr = Nd4j.create(outputVars[0].getShape());
+                sameDiff.putArrayForVertexId(outputVertexId, arr);
                 addOutputArgument(arr);
             }
         }
 
-        this.fromVertexId = sameDiff.getVariable(startNode.getName()).resultVertexId();
+        this.fromVertexId = sameDiff.getVariable(startNode.getName()).getVertexId();
         this.toVertexId = sameDiff.getVariable(endNode.getName()).getVertexId();
         this.deltaVertexId = sameDiff.getVariable(deltaNode.getName()).getVertexId();
 
@@ -113,14 +116,16 @@ public class Range extends DynamicCustomOp {
         val start = sameDiff.getVariableForVertexId(fromVertexId).getArr();
         val end = sameDiff.getVariableForVertexId(toVertexId).getArr();
         val delta = sameDiff.getVariableForVertexId(deltaVertexId).getArr();
+        val outputVars = outputVariables();
+
         if(start != null && end != null && delta != null) {
             this.from = start.getDouble(0);
             this.to = end.getDouble(0);
             this.delta = delta.getDouble(0);
             addTArgument(this.from,this.to,this.delta);
-            if(sameDiff.getArrForVertexId(resultVertexId()) == null) {
-                val arr = Nd4j.create(getResultShape());
-                sameDiff.putArrayForVertexId(resultVertexId(), arr);
+            if(sameDiff.getArrForVertexId(outputVars[0].getVertexId()) == null) {
+                val arr = Nd4j.create(outputVars[0].getShape());
+                sameDiff.putArrayForVertexId(outputVars[0].getVertexId(), arr);
                 addOutputArgument(arr);
             }
 
@@ -136,8 +141,62 @@ public class Range extends DynamicCustomOp {
 
     }
 
+
     @Override
-    public List<DifferentialFunction> doDiff(List<DifferentialFunction> f1) {
+    public List<int[]> calculateOutputShape() {
+        val iArgs = iArgs();
+        val tArgs = tArgs();
+        int cnt = 0;
+
+        if (iArgs.length > 0) {
+            int start = iArgs[0];
+            int stop = iArgs[1];
+            int step = iArgs[2];
+
+            double e = (double) start;
+            if (start > stop) {
+                while (e > (double) stop) {
+                    cnt++;
+                    e = (double) step > 0.0 ? e - step : e + step;
+                }
+            } else {
+                while (e < (double) stop) {
+                    cnt++;
+                    e += step;
+                }
+            }
+
+            return Arrays.asList(new int[]{1,cnt});
+        }
+
+        else if (tArgs.length > 0) {
+            double start = tArgs[0];
+            double stop = tArgs[1];
+            double step = tArgs[2];
+
+            double e = start;
+            if (start > stop) {
+                while (e > stop) {
+                    cnt++;
+                    e = step > 0.0 ? e - step : e + step;
+                }
+            } else {
+                while (e < stop) {
+                    cnt++;
+                    e += step;
+                }
+            }
+
+            return Arrays.asList(new int[]{1,cnt});
+        }
+
+
+        throw new ND4JIllegalStateException("Unable to compute shape. No arguments found!");
+
+    }
+
+    @Override
+    public List<SDVariable> doDiff(List<SDVariable> f1) {
         throw new UnsupportedOperationException("Unable to differentiate array creation routine");
     }
 

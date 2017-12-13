@@ -1,14 +1,16 @@
 package org.nd4j.linalg.api.ops.impl.broadcast;
 
 import lombok.val;
-import org.nd4j.autodiff.functions.DifferentialFunction;
+import org.nd4j.autodiff.samediff.SDVariable;
 import org.nd4j.autodiff.samediff.SameDiff;
-import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.DynamicCustomOp;
+import org.nd4j.linalg.exception.ND4JIllegalStateException;
+import org.nd4j.linalg.util.ArrayUtil;
 import org.tensorflow.framework.AttrValue;
 import org.tensorflow.framework.GraphDef;
 import org.tensorflow.framework.NodeDef;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -29,22 +31,22 @@ public class BiasAdd extends DynamicCustomOp {
     }
 
     @Override
-    public INDArray[] inputArguments() {
-        val originalRet = super.inputArguments();
-        val ret = new INDArray[2];
-        if(!originalRet[0].isVector()) {
-            ret[0] = originalRet[0];
-            ret[1] = originalRet[1];
-        }
-        else {
-            ret[0] = originalRet[1];
-            ret[1] = originalRet[0];
-        }
-        return ret;
+    public List<int[]> calculateOutputShape() {
+        val args = args();
+        for(int i = 0; i < args.length; i++)
+            if(args[i].getShape() == null)
+                throw new ND4JIllegalStateException("No  shape found for arg " + i + " !");
+        val firstShape = ArrayUtil.prod(args[0].getShape());
+        val secondShape = ArrayUtil.prod(args[1].getShape());
+
+        if(firstShape > secondShape)
+            return Arrays.asList(args[0].getShape());
+        else
+            return Arrays.asList(args[1].getShape());
     }
 
     @Override
-    public List<DifferentialFunction> doDiff(List<DifferentialFunction> f1) {
+    public List<SDVariable> doDiff(List<SDVariable> f1) {
         return null;
     }
 
